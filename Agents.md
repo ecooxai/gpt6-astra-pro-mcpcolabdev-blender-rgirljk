@@ -1,6 +1,6 @@
 # Agents.md — R01 continuation handoff
 
-Updated: 2026-10-03 15:30 UTC
+Updated: 2026-10-03 15:52 UTC
 
 ## User goal and non-negotiable provenance
 Re-create the supplied fully clothed character as an inspectable 3D character using headless Blender in mcp_colabdev. Work from scratch, not existing local/Internet meshes or textures. Do not use image generation. Inspect the reference and render images visually; do not analyze the reference pixels with code. User requested 20,000 actual edit/render/review iterations and a score above 95/100. **Those targets have NOT been met.** Do not claim otherwise or inflate the iteration count.
@@ -9,10 +9,10 @@ Reference URL: https://lesswebdisk.my-team-8435.chatgpt.site/raw/u-oKDfM5n2PVKJ/
 Local visual reference: /home/dev/project/3d/gpt6_astra_pro_mcpcolabdev_blender_rgirljk_scratch/reference/rgirljk.png
 
 ## Actual current reviewed state
-- Completed reviewed iterations: 3
-- Last visual self-assessment: 65.0/100, subjective and not independently validated.
-- Last review: Corrected iris placement, more natural eye proportions, a new collar, and a perspective camera. Remaining: angular facial contour, hard hair highlights, neck transition, ankle gaps and rear-hand anatomy.
-- Current generator geometry audit revision: 4 (may be ahead of the last visually reviewed iteration).
+- Completed reviewed iterations: 6
+- Last visual self-assessment: 70.0/100, subjective and not independently validated.
+- Last review: Removed the segmented fringe locks and rebuilt lids and lips. The model remains too stylized: teeth need true depth behind the lip opening, and the collar still needs close inspection. Score held at 70.
+- Current generator geometry audit revision: 6 (may be ahead of the last visually reviewed iteration).
 - Source is entirely procedural; hidden surfaces are interpretations, not observed reference facts.
 - The model is static/posed, not rigged for production animation.
 

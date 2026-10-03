@@ -88,7 +88,7 @@ PLAID=texmat('Slate navy tartan',(.12,.15,.20),'plaid',.79)
 TIE=texmat('Gold regimental silk',(.08,.11,.19),'tie',.55)
 SOCK=texmat('Midnight rib knit',(.07,.08,.13),'sock',.85)
 IRIS=texmat('Brown iris',(.12,.07,.03),'iris',.31)
-PACK=material('Indigo backpack canvas',(.026,.049,.091),.87)
+PACK=material('Indigo backpack canvas',(.016,.028,.049),.87)
 WEBBING=material('Navy strap webbing',(.017,.023,.033),.78)
 BUCKLE=material('Graphite acetal buckles',(.020,.023,.028),.31)
 LEATHER=material('Black polished loafer leather',(.014,.017,.024),.24)
@@ -180,7 +180,7 @@ def ribbon(name,points,widths,mat,depth=.002,steps=8,normal=(0,-1,0)):
 HEAD=Vector((.044,-.007,1.515)); ROT=Matrix.Rotation(.095,4,'Y')@Matrix.Rotation(-.045,4,'Z')
 def H(p): return HEAD+ROT.to_3x3()@Vector(p)
 ZP=[-.116,-.108,-.093,-.069,-.043,-.010,.025,.058,.087,.111,.125]
-XP=[.012,.027,.046,.061,.074,.080,.081,.079,.068,.045,.002]
+XP=[.015,.031,.048,.063,.075,.080,.081,.079,.068,.045,.002]
 YP=[.025,.035,.046,.058,.066,.071,.073,.072,.060,.039,.002]
 from functools import lru_cache
 @lru_cache(maxsize=16)
@@ -234,7 +234,7 @@ for mat in [SKIN,face_mat]:
     nt.links.new(noise.outputs['Fac'],bump.inputs['Height']);nt.links.new(bump.outputs['Normal'],nt.nodes.get('Principled BSDF').inputs['Normal'])
 
 # Neck flows into the shirt opening.
-tube('Neck',[(.019,.016,1.270),(.019,.016,1.306),(.025,.009,1.350),(.036,.002,1.409),H((0,.008,-.083))],[.055,.040,.034,.032,.034],SKIN,aspect=.94,n=48,steps=8)
+tube('Neck',[(.019,-.008,1.270),(.019,0,1.306),(.025,.009,1.350),(.036,.002,1.409),H((0,.008,-.083))],[.068,.046,.034,.032,.034],SKIN,aspect=.94,n=48,steps=8)
 for side in [-1,1]:
     ear=ell('Ear pinna '+str(side),H((side*.079,.002,-.012)),(.017,.014,.029),SKIN)
     ear.rotation_euler[1]=side*.13
@@ -243,83 +243,115 @@ for side in [-1,1]:
     curve('Ear helix '+str(side),pts,.0026,SKIN)
     curve('Ear antihelix '+str(side),[H((side*.086,-.014,-.027)),H((side*.089,-.014,-.010)),H((side*.084,-.014,.003))],.0018,SKIN)
 
-# Almond-shaped eye surfaces, separate tapered eyelid rims, radial iris maps.
+# ---------- Anatomical eyelid surfaces, irises and a curved dental smile ----------
+SCLERA=material('Soft warm sclera',(.66,.66,.61),.29,sss=.02)
+RIM=material('Soft eyelid tissue',(.59,.337,.245),.48,sss=.06)
+def eye_boundary(cx,cz,u,upper):
+    return cz+(.0058 if upper else -.0032)*sqrt(max(0,1-u*u))+.075*(cx/.031)*(u*.017)
+def eye_y(x,z,cx,cz):
+    return face_y(x,z)-.0007-.0034*exp(-((x-cx)/.015)**2-((z-cz)/.013)**2)
 for side in [-1,1]:
-    cx=side*.033; cz=.020
-    verts=[H((cx,face_y(cx,cz)-.0028,cz))]; uvs=[(.5,.5)]
-    N=64; R=12
+    cx=side*.031;cz=.020;N=64;R=12
+    v=[H((cx,eye_y(cx,cz,cx,cz),cz))];uv=[(.5,.5)];f=[]
     for k in range(1,R+1):
         r=k/R
         for j in range(N):
-            a=2*pi*j/N; dx=.0180*cos(a)*r
-            dz=(.0073 if sin(a)>0 else .0048)*sin(a)*r+side*dx*.07
-            x=cx+dx; z=cz+dz; y=face_y(x,z)-.001-.0018*(1-r*r)
-            verts.append(H((x,y,z)));uvs.append((.5+cos(a)*r*.5,.5+sin(a)*r*.5))
-    fs=[]
-    for j in range(N):fs.append((0,1+j,1+(j+1)%N))
+            a=2*pi*j/N;u=cos(a)*r;x=cx+.017*u
+            z=cz+(.0058 if sin(a)>0 else .0032)*sin(a)*r+side*(x-cx)*.075
+            v.append(H((x,eye_y(x,z,cx,cz),z)));uv.append((.5+.5*u,.5+.5*sin(a)*r))
+    for j in range(N):f.append((0,1+j,1+(j+1)%N))
     for k in range(R-1):
         a=1+k*N;b=a+N
-        for j in range(N):fs.append((a+j,b+j,b+(j+1)%N,a+(j+1)%N))
-    mesh('Almond sclera '+str(side),verts,fs,WHITE,uvs)
-    # Iris is shallow dome rather than a protruding sphere.
-    r=.0059; cy=face_y(cx,cz)-.0040
-    iv=[H((cx,cy-.00055,cz))]; iu=[(.5,.5)]; iff=[]
-    for j in range(N):
-        t=2*pi*j/N;xx=cx+r*cos(t);zz=cz+r*sin(t)
-        lower=cz-.0048*sqrt(max(0,1-((xx-cx)/.018)**2))+side*(xx-cx)*.07
-        upper=cz+.0073*sqrt(max(0,1-((xx-cx)/.018)**2))+side*(xx-cx)*.07
-        zz=max(lower+.0006,min(upper-.0005,zz))
-        iv.append(H((xx,face_y(xx,zz)-.0040,zz)));iu.append((.5+.5*cos(t),.5+.5*sin(t)))
-    for j in range(N):iff.append((0,j+1,(j+1)%N+1))
-    mesh('Brown iris '+str(side),iv,iff,IRIS,iu)
-    ell('Eye catchlight '+str(side),H((cx-.0018,cy-.0010,cz+.0026)),(.00135,.00035,.00135),WHITE,20,12)
+        for j in range(N):f.append((a+j,b+j,b+(j+1)%N,a+(j+1)%N))
+    mesh('Shaped ocular surface '+str(side),v,f,SCLERA,uv)
+    # Iris UVs represent the actual clipped disk, without stretching the top/bottom of the iris.
+    radius=.0060;v=[H((cx,eye_y(cx,cz,cx,cz)-.0006,cz))];uv=[(.5,.5)];f=[]
+    for k in range(1,9):
+        rr=radius*k/8
+        for j in range(N):
+            a=2*pi*j/N;x=cx+rr*cos(a);z=cz+rr*sin(a);u=(x-cx)/.017
+            z=max(eye_boundary(cx,cz,u,False)+.00025,min(eye_boundary(cx,cz,u,True)-.00025,z))
+            y=eye_y(x,z,cx,cz)-.00025-.00035*(1-k/8)
+            v.append(H((x,y,z)));uv.append((.5+(x-cx)/(2*radius),.5+(z-cz)/(2*radius)))
+    for j in range(N):f.append((0,1+j,1+(j+1)%N))
+    for k in range(7):
+        a=1+k*N;b=a+N
+        for j in range(N):f.append((a+j,b+j,b+(j+1)%N,a+(j+1)%N))
+    mesh('Brown radial iris '+str(side),v,f,IRIS,uv)
+    ell('Subtle corneal catchlight '+str(side),H((cx-.0019,eye_y(cx-.0019,cz+.0021,cx,cz)-.001,cz+.0021)),(.00085,.00023,.00085),WHITE,20,12)
     for upper in [True,False]:
-        pts=[]
-        for j in range(21):
-            u=-1+2*j/20;x=cx+.0180*u
-            z=cz+(.0073 if upper else -.0048)*sqrt(max(0,1-u*u))+side*(x-cx)*.07
-            pts.append(H((x,face_y(x,z)-.0022,z)))
-        curve(('Upper' if upper else 'Lower')+' eyelid '+str(side),pts,.00115 if upper else .00085,LID)
-        if upper:curve('Upper lash line '+str(side),[p+ROT.to_3x3()@Vector((0,-.0010,0)) for p in pts],.00052,BROW)
-    # Soft crease and a tapered brow strip.
-    browpts=[]
+        v=[];uv=[];f=[];inner=[]
+        for row in range(7):
+            t=row/6
+            for j in range(65):
+                u=-1+2*j/64;x=cx+(.017+.0025*t)*u
+                z=eye_boundary(cx,cz,u,upper)+(1 if upper else -1)*.0030*t*sqrt(max(0,1-u*u))
+                y=(1-t)*(eye_y(x,z,cx,cz)-.00015)+t*(face_y(x,z)-.00015)-.00055*sin(pi*t)
+                v.append(H((x,y,z)));uv.append((j/64,t))
+                if row==0:inner.append(H((x,y-.00018,z)))
+        for row in range(6):
+            for j in range(64):a=row*65+j;f.append((a,a+1,a+66,a+65))
+        lid=mesh(('Upper' if upper else 'Lower')+' modeled lid '+str(side),v,f,SKIN,uv,1)
+        if upper:curve('Fine upper lash contour '+str(side),inner,.00031,BROW)
+        else:curve('Subtle lower waterline '+str(side),inner,.00019,RIM)
+    # Individual tapered brow hairs, with a muted base rather than a hard outline.
+    pts=[]
     for j in range(7):
-        u=-1+2*j/6;x=cx+.024*u;z=.046+.004*(1-u*u)+side*.002*u
-        browpts.append(H((x,face_y(x,z)-.0018,z)))
-    ribbon('Tapered eyebrow '+str(side),browpts,[.0006,.003,.004,.004,.003,.002,.0004],BROW,.0003)
-    for j in range(15):
-        u=-.9+1.8*j/14; x=cx+.024*u; z=.046+.004*(1-u*u)+side*.002*u
-        curve('Brow filament', [H((x,face_y(x,z)-.002,z-.001)),H((x+side*.0015,face_y(x,z)-.0024,z+.0016))],.00016,BROW)
-# Nose is sculpted in the continuous head; only nostril recess and septum accent are separate.
+        u=-1+2*j/6;x=cx+.022*u;z=.043+.0045*(1-u*u)+side*.001*u
+        pts.append(H((x,face_y(x,z)-.0010,z)))
+    ribbon('Natural brow base '+str(side),pts,[.0003,.0023,.0032,.0030,.0023,.0012,.0002],BROW,.00015)
+    for j in range(32):
+        u=-.94+1.88*j/31;x=cx+.022*u;z=.043+.0045*(1-u*u)+side*.001*u
+        curve('Fine brow hair',[H((x,face_y(x,z)-.0013,z-.0008)),H((x+side*.0013,face_y(x,z)-.0015,z+.0012))],.00009,BROW)
+# Recessed nostril shadows are only partially visible under the nasal alae.
 for side in [-1,1]:
-    x=side*.011; z=-.021
-    o=ell('Nostril recess '+str(side),H((x,face_y(x,z)-.0007,z)),(.0031,.0011,.0015),INNER,24,12);o.rotation_euler[1]=side*.2
-# Open smile with individually shaped teeth and restrained natural lip rims.
-verts=[];uv=[];fs=[]
+    x=side*.0102;z=-.023
+    o=ell('Nostril underside '+str(side),H((x,face_y(x,z)+.00035,z)),(.0025,.00165,.0009),INNER,28,16)
+    o.rotation_euler=ROT.to_euler();o.rotation_euler[0]+=.35
+
+def mouth_bounds(u):
+    return -.043-.002*(1-u*u),-.043-.016*(1-u*u)
+v=[];uv=[];f=[]
 for row in range(9):
     t=row/8
     for j in range(65):
-        u=-1+2*j/64; x=.030*u; top=-.046+.002*(1-u*u); bottom=-.046-.016*(1-u*u)
-        z=top*(1-t)+bottom*t;y=face_y(x,z)-.0022
-        verts.append(H((x,y,z)));uv.append((j/64,t))
-for i in range(8):
-    for j in range(64):a=i*65+j;fs.append((a,a+1,a+66,a+65))
-mesh('Smile oral opening',verts,fs,DARK,uv)
+        u=-1+2*j/64;x=.029*u;top,bottom=mouth_bounds(u);z=top*(1-t)+bottom*t
+        v.append(H((x,face_y(x,z)-.0018,z)));uv.append((j/64,t))
+for row in range(8):
+    for j in range(64):a=row*65+j;f.append((a,a+1,a+66,a+65))
+mesh('Curved smile opening',v,f,DARK,uv)
+LIPSOFT=material('Soft natural lip surface',(.48,.207,.161),.42,sss=.06)
 for upper in [True,False]:
-    pts=[]
-    for j in range(33):
-        u=-1+2*j/32;x=.030*u;z=-.046+(.002 if upper else -.016)*(1-u*u)
-        pts.append(H((x,face_y(x,z)-.0030,z)))
-    curve('Upper vermilion' if upper else 'Lower lip',pts,.00105 if upper else .0019,LIP)
-for i in range(10):
-    x=(i-4.5)*.00545; u=x/.030; z=-.0485+.002*u*u
-    y=face_y(x,z)-.0036
-    tooth=cube('Upper tooth %02d'%i,H((x,y,z)),(.00515,.0037,.0088*(1-.20*abs(u))),TEETH,.0007)
-    tooth.rotation_euler=ROT.to_euler();tooth.rotation_euler[2]+=-x*.8
-for side in [-1,1]:
-    pass # subtle smile corners are formed by the lip contour, without painted crease lines
-# Deliberately subtle facial asymmetry and a small beauty mark.
-ell('Cheek beauty mark',H((-.051,face_y(-.051,-.029)-.0005,-.029)),(.00055,.00024,.00055),LID,16,8)
+    v=[];uv=[];f=[]
+    for row in range(9):
+        t=row/8
+        for j in range(65):
+            u=-1+2*j/64;x=.029*u;top,bottom=mouth_bounds(u);edge=top if upper else bottom
+            height=(.0025 if upper else .0031)*max(0,1-u*u)**.65
+            if upper:height+=.0006*exp(-((abs(u)-.24)/.17)**2)
+            z=edge+(1 if upper else -1)*height*t
+            y=face_y(x,z)-.0018*(1-t)-.0020*sin(pi*t)*max(0,1-u*u)
+            v.append(H((x,y,z)));uv.append((j/64,t))
+    for row in range(8):
+        for j in range(64):a=row*65+j;f.append((a,a+1,a+66,a+65))
+    lip=mesh('Upper shaped lip' if upper else 'Lower shaped lip',v,f,LIPSOFT,uv,1)
+    # A soft vertex-color falloff blends the outer lip into the surrounding skin.
+    col=lip.data.color_attributes.new(name='LipTint',type='FLOAT_COLOR',domain='POINT')
+    for i,c in enumerate(col.data):
+        t=(i//65)/8;blend=t**2
+        a=(.47,.195,.150) if upper else (.52,.238,.190);b=(.63,.378,.269)
+        c.color=tuple(a[k]*(1-blend)+b[k]*blend for k in range(3))+(1,)
+    lm=LIPSOFT.copy();lm.name=('Upper' if upper else 'Lower')+' lip blended tone';nt=lm.node_tree;n=nt.nodes.new('ShaderNodeVertexColor');n.layer_name='LipTint';nt.links.new(n.outputs['Color'],nt.nodes.get('Principled BSDF').inputs['Base Color']);lip.data.materials[0]=lm
+widths=[.0036,.0042,.0052,.0061,.0070,.0070,.0061,.0052,.0042,.0036]
+heights=[.0068,.0075,.0085,.0096,.0106,.0106,.0096,.0085,.0075,.0068]
+cursor=-sum(widths)/2
+for i,(w,h) in enumerate(zip(widths,heights)):
+    x=cursor+w/2;cursor+=w;u=x/.029;top=-.0447+.0025*u*u;z=top-h/2
+    y=face_y(x,z)-.0028
+    tooth=cube('Anatomical upper tooth %02d'%i,H((x,y,z)),(w-.00009,.0035,h),TEETH,.0007)
+    tooth.rotation_euler=ROT.to_euler();tooth.rotation_euler[2]+=-x*.7
+ell('Subtle facial beauty mark',H((-.051,face_y(-.051,-.029)-.00025,-.029)),(.00042,.00018,.00042),LID,16,8)
+
 # ---------- Hair: hand-directed cap, layered swept fringe, and twin low tails ----------
 def cap_end(t): return float(np.interp(math.acos(cos(t)),[0,.65,1.05,1.35,1.57,2.2,pi],[1.12,1.14,1.22,1.55,1.80,2.12,2.18]))
 def cap_point(t,a,off=0):
@@ -334,24 +366,45 @@ for i in range(37):
 for i in range(36):
     for j in range(144):a=i*145+j;f.append((a,a+1,a+146,a+145))
 mesh('Continuous shaped hair cap',v,f,HAIR,uv,1)
-for i in range(135):
-    t=2*pi*i/135;pts=[]
+for i in range(360):
+    t=2*pi*i/360;pts=[]
     for j in range(15):
         a=.07+(cap_end(t)-.09)*j/14;tt=t+.13*sin(a)*cos(t)
         p=cap_point(tt,a,.0008+random.random()*.0003);p.x+=.003*cos(a)**2;pts.append(H(p))
-    curve('Crown combed fiber %03d'%i,pts,.00012 if i%3 else .00017,HAIR2 if i%5 else HAIR3)
-for i in range(17):
-    u=i/16; xe=-.069+.103*u
-    # Fringe sweeps from a high part on the right into a low leftward arc.
-    points=[(.040+.014*u,-.029,.117),(.031+.015*u,-.062,.096),
-            (xe+.023,-.080,.068), (xe+.008,-.080,.040+.021*u*u),
-            (xe-.005,-.073,.028+.026*u*u)]
-    points=[(x,(face_y(x,z)-.009 if j else y),z) for j,(x,y,z) in enumerate(points)]
-    pp=[H(p) for p in points]
-    ribbon('Swept fringe lock %02d'%i,pp,[.001,.011,.012,.009,.0002],HAIR if i%4 else HAIR2,.0018,10,ROT.to_3x3()@Vector((0,-1,0)))
-    for k in range(4):
-        dx=(k-1.5)*.0018;pts=[H((x+dx,y-.0025,z)) for x,y,z in points]
-        curve('Fine fringe fiber',pts,.00014,HAIR2 if k%3 else HAIR3)
+    strand=curve('Crown combed fiber %03d'%i,pts,.00006 if i%3 else .00009,HAIR2 if i%7 else HAIR3)
+    strand.data.resolution_u=3;strand.data.bevel_resolution=1;strand['web_detail_keep']=(i%2==0)
+def fringe_path(u):
+    controls=[(.024+.020*u,.117),(.010+.039*u,.095),(-.055+.104*u,.063+.004*u),(-.073+.111*u,.030+.019*u*u)]
+    p=[]
+    for x,z in controls:
+        q=sqrt(max(.001,1-(z/.138)**2));rx=.090*q*(1+.07*q*q);ry=.083*q*(1+.04*q*q)
+        yy=-ry*sqrt(max(.02,1-min(.985,(x/rx)**2)))-.0013
+        yy=min(yy,face_y(x,z)-.004)
+        p.append(Vector((x,yy,z)))
+    path=interp(p,12)
+    for j,q in enumerate(path):
+        t=j/(len(path)-1)
+        q.y-=.00028*sin(2*pi*u*43)*sin(pi*t)
+        q.z+=(t**9)*(.0007*sin(u*151)+.0003*sin(u*313))
+    return path
+columns=96;rows=len(fringe_path(0));v=[];uv=[];f=[]
+paths=[fringe_path(i/columns) for i in range(columns+1)]
+for j in range(rows):
+    for i in range(columns+1):v.append(H(paths[i][j]));uv.append((i/columns,j/(rows-1)))
+for j in range(rows-1):
+    for i in range(columns):a=j*(columns+1)+i;f.append((a,a+1,a+columns+2,a+columns+1))
+mesh('Continuous swept fringe surface',v,f,HAIR,uv,1)
+for i in range(360):
+    u=(i+.3)/360;p=fringe_path(u)
+    pts=[H(q+Vector((0,-.00045,0))) for q in p]
+    strand=curve('Fine swept fringe strand %03d'%i,pts,.000055 if i%3 else .000075,HAIR2 if i%9 else HAIR3)
+    strand.data.resolution_u=2;strand.data.bevel_resolution=1
+    strand['web_detail_keep']=(i%3==0)
+for i in range(8):
+    p=fringe_path((i+.3)/12)
+    pts=[H(q+Vector((-.0006*sin(j/len(p)*pi),-.0012,0))) for j,q in enumerate(p)]
+    strand=curve('Fringe edge flyaway',pts,.000045,HAIR2);strand.data.resolution_u=2;strand.data.bevel_resolution=1
+
 for side in [-1,1]:
     tail=[(side*.080,.033,-.040),(side*.102,.038,-.081),(side*.110,.020,-.127),(side*.109,.004,-.175),(side*.102,-.015,-.226),(side*.083,-.020,-.247)]
     tube('Low ponytail volume '+str(side),[H(p) for p in tail],[.018,.030,.031,.028,.016,.001],HAIR,aspect=.80,n=40,steps=9)
@@ -379,21 +432,22 @@ for i in range(18):
     curve('Fine crown flyaway',pts,.00010,HAIR2)
 
 # ---------- Shirt with shaped shoulders, open collar, sleeve folds and rolled cuffs ----------
-sections=[(1.000,.118,.067),(1.013,.128,.075),(1.051,.132,.075),(1.112,.138,.074),(1.187,.144,.075),(1.256,.155,.073),(1.297,.158,.064),(1.316,.136,.054),(1.342,.048,.036)]
+sections=[(1.000,.118,.067),(1.013,.128,.075),(1.051,.132,.075),(1.112,.138,.074),(1.187,.144,.075),(1.284,.155,.073),(1.320,.160,.065),(1.340,.137,.054),(1.355,.048,.036)]
 v=[];f=[];uv=[];NX=128; NR=64
 for i in range(NR+1):
     t=i/NR*(len(sections)-1);k=min(int(t),len(sections)-2);a=t-k
     z,rx,ry=[sections[k][j]*(1-a)+sections[k+1][j]*a for j in range(3)]
     for j in range(NX+1):
         th=2*pi*j/NX;front=max(0,cos(th)); top=(i/NR)**15
-        zz=z-.053*front**5*top
+        zz=z-.080*front**3*max(0,(z-1.230)/.125)
         fold=(.0022*sin(th*14+z*36)+.0017*sin(th*23-z*42))*(.3+.7*exp(-((z-1.03)/.045)**2))
         fold+=.002*sin(th*9+z*70)*exp(-((abs(sin(th))-.80)/.22)**2)
         x=(rx+fold)*sin(th)+(z-1)*.052
-        y=-(ry+fold*.8)*cos(th)+.006
+        y=-(ry+fold*.8+.046*max(0,(z-1.315)/.040)*front**4)*cos(th)+.006
         v.append((x,y,zz));uv.append((j/NX*3,i/NR*3))
 for i in range(NR):
-    for j in range(NX):a=i*(NX+1)+j;f.append((a,a+1,a+NX+2,a+NX+1))
+    for j in range(NX):
+        a=i*(NX+1)+j;f.append((a,a+1,a+NX+2,a+NX+1))
 shirt=mesh('Shaped cotton shirt shell',v,f,SHIRT,uv,1)
 s=shirt.modifiers.new('Cotton shell thickness','SOLIDIFY');s.thickness=.0014
 # The exposed chest is now continuous with the neck, without an intersecting ellipsoid.
@@ -425,7 +479,7 @@ for j in range(64):cf.append((j,j+1,j+66,j+65))
 co=mesh('Open standing shirt collar',cv,cf,SHIRT,cu,1)
 md=co.modifiers.new('Collar band thickness','SOLIDIFY');md.thickness=.0015
 for side in [-1,1]:
-    top=[(.023+side*.020,-.032,1.310),(.023+side*.038,-.005,1.348),(.023+side*.040,.023,1.343)]
+    top=[(.023+side*.020,-.046,1.317),(.023+side*.038,-.005,1.348),(.023+side*.040,.023,1.343)]
     hem=[(.023+side*.048,-.080,1.254),(.023+side*.070,-.056,1.295),(.023+side*.055,.035,1.329)]
     rows=[]
     for i in range(9):
@@ -442,7 +496,7 @@ EMB=material('Pale blue embroidery',(.33,.53,.71),.8)
 curve('Embroidered chest motif',[(.102,-.072,1.194),(.107,-.074,1.204),(.104,-.074,1.217),(.109,-.073,1.209),(.111,-.073,1.199)],.00065,EMB)
 for side in [-1,1]:
     sx=side
-    points=[(sx*.127+.015,.010,1.287),(sx*.135+.014,.005,1.250),(sx*.146+.012,.012,1.183),(sx*.150+.009,.033,1.115),(sx*.148+.007,.048,1.062)]
+    points=[(sx*.113+.015,.010,1.314),(sx*.135+.014,.005,1.271),(sx*.146+.012,.012,1.183),(sx*.150+.009,.033,1.115),(sx*.148+.007,.048,1.062)]
     tube('Cotton sleeve '+str(side),points,[.041,.041,.040,.033,.0285],SHIRT,aspect=.90,n=64,steps=10,ripple=.028)
     # Five slender curved folds rather than artificial bands.
     for k in range(5):
@@ -456,8 +510,8 @@ for side in [-1,1]:
     knuckle=Vector((sx*.036+.007,.153 if side<0 else .166,.920 if side<0 else .902))
     direction=(knuckle-wrist).normalized();normal=Vector((0,1,0));normal=(normal-direction*normal.dot(direction)).normalized();wide=normal.cross(direction).normalized()
     handparts=[]
-    fore=[(sx*.147+.007,.048,1.061),(sx*.129+.007,.080,1.017),wrist]
-    handparts.append(tube('Forearm to wrist '+str(side),fore,[.028,.025,.0185],SKIN,aspect=.93,n=40,steps=10))
+    fore=[(sx*.147+.007,.048,1.061),(sx*.129+.007,.080,1.017),wrist-direction*.012,wrist+direction*.016]
+    handparts.append(tube('Forearm to wrist '+str(side),fore,[.028,.024,.017,.0125],SKIN,aspect=.84,n=40,steps=10))
     palm=ell('Anatomical palm '+str(side),(wrist+knuckle)/2,(.023,.011,(knuckle-wrist).length*.59),SKIN,40,24)
     basis=Matrix((wide,normal,direction)).transposed();palm.rotation_euler=basis.to_euler();handparts.append(palm)
     for k,length in enumerate([.036,.044,.042,.032]):
@@ -474,7 +528,7 @@ for side in [-1,1]:
     bpy.context.view_layer.objects.active=handparts[0];bpy.ops.object.join();hand=bpy.context.object;hand.name='Continuous forearm and posed hand '+str(side)
     rm=hand.modifiers.new('Sculpted wrist and finger junctions','REMESH');rm.mode='VOXEL';rm.voxel_size=.00085;rm.use_smooth_shade=True
     bpy.ops.object.modifier_apply(modifier=rm.name)
-    sm=hand.modifiers.new('Hand surface relaxation','SMOOTH');sm.factor=.42;sm.iterations=3;bpy.ops.object.modifier_apply(modifier=sm.name)
+    sm=hand.modifiers.new('Hand surface relaxation','SMOOTH');sm.factor=.46;sm.iterations=6;bpy.ops.object.modifier_apply(modifier=sm.name)
 
 # ---------- Pleated tartan skirt, waistband, lining and silk tie ----------
 NPLEATS=28; NS=NPLEATS*8; NH=28
@@ -514,7 +568,7 @@ for j in range(128):f.append((j,j+1,j+130,j+129))
 mesh('Structured tartan waistband',v,f,PLAID,uv)
 # Loose regimental loop; left and right visible above the knot.
 for side in [-1,1]:
-    ribbon('Loose necktie loop '+str(side),[(.023+side*.058,-.042,1.304),(.018+side*.053,-.073,1.278),(.016+side*.030,-.084,1.239),(.012,-.089,1.218)],[.014,.017,.017,.018],TIE,.0012)
+    ribbon('Loose necktie loop '+str(side),[(.023+side*.058,-.047,1.319),(.018+side*.053,-.076,1.287),(.016+side*.030,-.084,1.239),(.012,-.089,1.218)],[.014,.017,.017,.018],TIE,.0012)
 # Knot as a sculpted beveled prism.
 v=[(-.011,-.096,1.238),(.037,-.096,1.234),(.025,-.104,1.200),(.006,-.104,1.200),(-.006,-.087,1.238),(.032,-.087,1.234),(.023,-.093,1.200),(.008,-.093,1.200)]
 f=[(0,1,2,3),(7,6,5,4),(0,4,5,1),(1,5,6,2),(2,6,7,3),(3,7,4,0)]
@@ -603,17 +657,24 @@ curve('Pocket piped edge',[(-.068,.211,1.061),(-.079,.211,1.099),(-.075,.211,1.1
 curve('Backpack main zip',[(-.103,.158,1.187),(-.102,.161,1.278),(-.068,.164,1.331),(.014,.166,1.340),(.097,.164,1.331),(.130,.161,1.278),(.131,.158,1.187)],.0023,WEBBING)
 curve('Top carry handle',[(-.029,.124,1.314),(-.027,.128,1.342),(.055,.128,1.342),(.057,.124,1.314)],.006,WEBBING)
 for s in [-1,1]:
-    paths=[(.014+s*.104,.135,1.248),(.014+s*.141,.095,1.314),(.014+s*.150,.030,1.318),(.014+s*.143,-.018,1.292),(.014+s*.132,-.044,1.227),(.014+s*.128,-.043,1.157),(.014+s*.109,-.017,1.077),(.014+s*.096,.073,1.054)]
+    paths=[(.014+s*.104,.135,1.248),(.014+s*.141,.095,1.340),(.014+s*.150,.030,1.342),(.014+s*.143,-.018,1.310),(.014+s*.132,-.044,1.227),(.014+s*.128,-.043,1.157),(.014+s*.109,-.017,1.077),(.014+s*.096,.073,1.054)]
     ribbon('Continuous backpack shoulder strap '+str(s),paths,[.025,.030,.030,.030,.025,.021,.016,.017],PACK,.003,10)
     for off in [-.010,.010]:
         curve('Backpack strap edge stitch',[Vector(p)+Vector((off,-.002,0)) for p in paths[2:6]],.00036,WEBBING)
     x=.014+s*.131
     for z in [1.212,1.185]:
         # Rectangular acetal adjuster with a central bar, not a solid plate.
-        curve('Backpack buckle frame',[(x-.012,-.050,z-.010),(x+.012,-.050,z-.010),(x+.012,-.050,z+.010),(x-.012,-.050,z+.010)],.0025,BUCKLE,True)
+        for dx in [-.011,.011]:cube('Buckle vertical bar',(x+dx,-.050,z),(.0035,.004,.020),BUCKLE,.001)
+        for dz in [-.0085,.0085]:cube('Buckle horizontal bar',(x,-.050,z+dz),(.024,.004,.0035),BUCKLE,.001)
         curve('Backpack buckle bar',[(x-.010,-.052,z),(x+.010,-.052,z)],.0018,BUCKLE)
     cube('Backpack side pocket '+str(s),(.014+s*.124,.133,1.094),(.031,.068,.105),PACK,.010)
     pull=cube('Metal zip pull '+str(s),(.014+s*.057,.174,1.332),(.006,.004,.016),GOLD,.002);pull.rotation_euler[1]=s*.20
+
+# Directional strand highlights, with restrained specular energy.
+for mat in [HAIR,HAIR2,HAIR3]:
+    bsdf=mat.node_tree.nodes.get('Principled BSDF')
+    bsdf.inputs['Specular IOR Level'].default_value=.30
+    if 'Anisotropic IOR Level' in bsdf.inputs:bsdf.inputs['Anisotropic IOR Level'].default_value=.65
 
 # ---------- Scene, authored source, optimized web export and audit ----------
 scene=bpy.context.scene
@@ -661,6 +722,7 @@ deps=bpy.context.evaluated_depsgraph_get(); export_coll=bpy.data.collections.new
 buckets={}
 for ob in list(CHAR.objects):
     if ob.type not in {'MESH','CURVE'}:continue
+    if not ob.get('web_detail_keep',True):continue
     ev=ob.evaluated_get(deps);me=bpy.data.meshes.new_from_object(ev,preserve_all_data_layers=True,depsgraph=deps)
     if not len(me.vertices):bpy.data.meshes.remove(me);continue
     no=bpy.data.objects.new('Export '+ob.name,me);export_coll.objects.link(no);no.matrix_world=ob.matrix_world.copy()
