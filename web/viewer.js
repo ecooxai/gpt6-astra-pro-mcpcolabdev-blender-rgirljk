@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 const $=s=>document.querySelector(s), base='/build/gpt6_astra_pro_mcpcolabdev_blender_rgirljk_scratch';
 const modelFile='preview/gpt6_astra_pro_mcpcolabdev_blender_rgirljk.glb';
 $('#modelPath').textContent=`${base}/${modelFile}`;
@@ -11,22 +12,22 @@ let renderer,controls,camera,scene,model,currentView='front',loadedVersion=-1,st
 try{
  renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(devicePixelRatio,innerWidth<760?1.4:1.7));renderer.outputColorSpace=THREE.SRGBColorSpace;
- renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+ renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.93;
  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
  scene=new THREE.Scene();scene.background=new THREE.Color('#e3e7df');
  camera=new THREE.OrthographicCamera(-1,1,1,-1,.01,40);
  controls=new OrbitControls(camera,canvas);controls.enableDamping=true;controls.dampingFactor=.09;controls.minZoom=.6;controls.maxZoom=7;controls.maxPolarAngle=Math.PI*.87;controls.autoRotateSpeed=.7;controls.screenSpacePanning=true;
  controls.addEventListener('change',()=>needsFrame=true);
- scene.add(new THREE.HemisphereLight(0xf6f5ee,0x707d70,2.1));
+ scene.add(new THREE.HemisphereLight(0xf6f5ee,0x707d70,1.45));
  function light(pos,color,power){const l=new THREE.DirectionalLight(color,power);l.position.set(...pos);scene.add(l);return l;}
- const key=light([-2,4,3],0xffecd9,3.3);key.castShadow=true;key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-1.3,right:1.3,top:2.1,bottom:-.8,near:.1,far:12});key.shadow.bias=-.00015;key.shadow.normalBias=.018;key.shadow.radius=4;
- light([2,2,1],0xd9e6ff,1.35);light([.8,3,-2],0xfff8e6,2.8);
+ const key=light([-2,4,3],0xffecd9,2.35);key.castShadow=true;key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-1.3,right:1.3,top:2.1,bottom:-.8,near:.1,far:12});key.shadow.bias=-.00015;key.shadow.normalBias=.018;key.shadow.radius=4;
+ light([2,2,1],0xd9e6ff,.90);light([.8,3,-2],0xfff8e6,1.85);
  // Original geometric light room: used only to generate PBR reflections.
  const envScene=new THREE.Scene();envScene.background=new THREE.Color(0x5f6864);
  const wall=new THREE.Mesh(new THREE.BoxGeometry(8,8,8),new THREE.MeshBasicMaterial({color:0xb1b6ad,side:THREE.BackSide}));envScene.add(wall);
  for(const [pos,size,power] of [[[-3,2,1],[.1,4,3],5],[[2.5,2,-1],[.1,3,3],3],[[0,3,0],[3,.1,3],4]]){const p=new THREE.Mesh(new THREE.BoxGeometry(...size),new THREE.MeshBasicMaterial({color:new THREE.Color().setScalar(power)}));p.position.set(...pos);envScene.add(p);}
  const pm=new THREE.PMREMGenerator(renderer);const rt=pm.fromScene(envScene,.05);scene.environment=rt.texture;envScene.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});pm.dispose();
- const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:'#e3e7df',roughness:1}));ground.rotation.x=-Math.PI/2;ground.position.y=-.002;ground.receiveShadow=true;scene.add(ground);
+ const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshBasicMaterial({color:'#e3e7df'}));ground.rotation.x=-Math.PI/2;ground.position.y=-.002;ground.receiveShadow=true;scene.add(ground);const shadow=new THREE.Mesh(new THREE.PlaneGeometry(20,20),new THREE.ShadowMaterial({opacity:.16}));shadow.rotation.x=-Math.PI/2;shadow.position.y=-.001;shadow.receiveShadow=true;scene.add(shadow);
  // A quiet, authored stage marker, not part of the exported character.
  const ring=new THREE.Mesh(new THREE.RingGeometry(.36,.3615,128),new THREE.MeshBasicMaterial({color:'#c1cabc',side:THREE.DoubleSide}));ring.rotation.x=-Math.PI/2;ring.position.y=.0002;scene.add(ring);
  function resize(){const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h,false);const sy=1.87;camera.left=-sy*w/h/2;camera.right=sy*w/h/2;camera.top=sy/2;camera.bottom=-sy/2;camera.updateProjectionMatrix();needsFrame=true;}
@@ -41,7 +42,7 @@ try{
  window.__R01_SCENE={renderer,scene,camera,controls};
 }catch(e){$('#loadDetail').textContent='WebGL is unavailable. The studio renders and downloadable model remain available.';console.error(e);}
 async function loadModel(version){if(!renderer||loadBusy)return;loadBusy=true;try{
- const gltf=await new GLTFLoader().loadAsync(`${modelFile}?v=${version}`,e=>{$('#loadDetail').textContent=e.total?`${Math.round(e.loaded/e.total*100)}% · original geometry`:`${(e.loaded/1048576).toFixed(1)} MB loaded`;});
+ const gltf=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(`${modelFile}?v=${version}`,e=>{$('#loadDetail').textContent=e.total?`${Math.round(e.loaded/e.total*100)}% · original geometry`:`${(e.loaded/1048576).toFixed(1)} MB loaded`;});
  if(model){scene.remove(model);model.traverse(o=>{o.geometry?.dispose();if(o.material){for(const m of Array.isArray(o.material)?o.material:[o.material]){for(const p of Object.values(m))if(p?.isTexture)p.dispose();m.dispose();}}});}
  model=gltf.scene;let tri=0,draws=0;model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=true;tri+=(o.geometry.index?.count||o.geometry.attributes.position.count)/3;draws++;o.material.envMapIntensity=.42;}});scene.add(model);loadedVersion=version;needsFrame=true;$('#loading').classList.add('hidden');$('#meshInfo').textContent=`${Math.round(tri/1000)}k triangles / ${draws} material groups`;window.__R01_MODEL_READY=true;window.__R01_TRIANGLES=tri;
  }catch(e){$('#loadDetail').textContent='The next build is being prepared. Retrying shortly…';console.warn('Model pending',e.message);}finally{loadBusy=false;}}

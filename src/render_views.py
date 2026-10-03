@@ -2,7 +2,7 @@ import bpy,os
 from pathlib import Path
 from mathutils import Vector
 ROOT=Path(__file__).resolve().parents[1];PRE=ROOT/'build/preview'
-s=bpy.context.scene;s.cycles.use_denoising=False;s.cycles.samples=int(os.environ.get('SAMPLES','64'));s.render.threads_mode='FIXED';s.render.threads=8
+s=bpy.context.scene;s.cycles.use_denoising=True;s.cycles.samples=int(os.environ.get('SAMPLES','64'));s.render.threads_mode='FIXED';s.render.threads=8
 views=os.environ.get('VIEWS','front').split(',')
 for view in views:
     s.render.resolution_x=800;s.render.resolution_y=1200;s.camera.data.ortho_scale=1.81

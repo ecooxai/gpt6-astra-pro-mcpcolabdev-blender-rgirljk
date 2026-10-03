@@ -32,10 +32,10 @@ def texture(name,kind,size=768):
     rng=np.random.default_rng(13)
     noise=rng.normal(0,1,(size,size))
     if kind=='plaid':
-        c=np.zeros((size,size,3))+[.115,.145,.202]
+        c=np.zeros((size,size,3))+[.102,.124,.175]
         for q in [x,y]:
             d=np.abs((q+.5)%1-.5)
-            c+=((d<.19)&(d>.075))[...,None]*np.array([.084,.088,.097])
+            c+=((d<.19)&(d>.075))[...,None]*np.array([.058,.063,.074])
             c+=(np.abs(d-.125)<.014)[...,None]*np.array([.050,.058,.068])
             c+=(np.abs(d-.270)<.009)[...,None]*np.array([.080,.085,.094])
             c+=(np.abs(d-.340)<.008)[...,None]*np.array([.039,.045,.052])
@@ -79,9 +79,9 @@ INNER=material('Ear inner shade',(.30,.11,.077),.57)
 DARK=material('Mouth and nostril depth',(.036,.012,.012),.60)
 WHITE=material('Ivory sclera',(.83,.81,.75),.27)
 TEETH=material('Natural enamel',(.79,.76,.66),.30)
-HAIR=material('Near black umber hair',(.016,.012,.013),.31)
-HAIR2=material('Hair soft highlight',(.029,.021,.019),.34)
-HAIR3=material('Hair fine warm fibers',(.043,.030,.023),.37)
+HAIR=material('Near black umber hair',(.016,.012,.013),.47)
+HAIR2=material('Hair soft highlight',(.021,.016,.016),.49)
+HAIR3=material('Hair fine warm fibers',(.027,.021,.019),.51)
 BROW=material('Brow and lash umber',(.025,.014,.012),.52)
 SHIRT=texmat('Pearl cotton',(.84,.87,.92),'shirt',.72)
 PLAID=texmat('Slate navy tartan',(.12,.15,.20),'plaid',.79)
@@ -182,13 +182,26 @@ def H(p): return HEAD+ROT.to_3x3()@Vector(p)
 ZP=[-.116,-.108,-.093,-.069,-.043,-.010,.025,.058,.087,.111,.125]
 XP=[.012,.027,.046,.061,.074,.080,.081,.079,.068,.045,.002]
 YP=[.025,.035,.046,.058,.066,.071,.073,.072,.060,.039,.002]
-def prof(z):return float(np.interp(z,ZP,XP)),float(np.interp(z,ZP,YP))
+from functools import lru_cache
+@lru_cache(maxsize=16)
+def tangents(xs,ys):
+    d=[(ys[i+1]-ys[i])/(xs[i+1]-xs[i]) for i in range(len(xs)-1)];m=[d[0]]
+    for i in range(1,len(xs)-1):
+        if d[i-1]*d[i]<=0:m.append(0.)
+        else:
+            h0=xs[i]-xs[i-1];h1=xs[i+1]-xs[i];w1=2*h1+h0;w2=h1+2*h0
+            m.append((w1+w2)/(w1/d[i-1]+w2/d[i]))
+    return tuple(m+[d[-1]])
+def smooth_profile(z,xs,ys):
+    i=max(0,min(len(xs)-2,int(np.searchsorted(xs,z))-1));h=xs[i+1]-xs[i];t=max(0,min(1,(z-xs[i])/h));m=tangents(tuple(xs),tuple(ys))
+    return (2*t**3-3*t*t+1)*ys[i]+(t**3-2*t*t+t)*h*m[i]+(-2*t**3+3*t*t)*ys[i+1]+(t**3-t*t)*h*m[i+1]
+def prof(z):return smooth_profile(z,ZP,XP),smooth_profile(z,ZP,YP)
 def face_y(x,z):
     rx,ry=prof(z); t=min(.999,abs(x)/max(rx,.001)); y=-ry*(max(0,1-t*t)**.48)
     y-=.004*exp(-((abs(x)-.044)/.022)**2-((z+.026)/.027)**2)
     y+=.004*exp(-((abs(x)-.034)/.023)**2-((z-.019)/.013)**2)
-    y-=.006*exp(-(x/.012)**2-((z-.012)/.029)**2)
-    y-=.020*exp(-(x/.010)**2-((z+.010)/.014)**2)
+    y-=.0045*exp(-(x/.012)**2-((z-.012)/.029)**2)
+    y-=.0155*exp(-(x/.0115)**2-((z+.012)/.015)**2)
     y-=.006*exp(-((abs(x)-.012)/.008)**2-((z+.019)/.006)**2)
     y-=.0025*exp(-(x/.033)**2-((z+.051)/.019)**2)
     return y
@@ -202,9 +215,26 @@ for i in range(NZ+1):
         v.append(H((x,y,z)));uv.append((j/NT,i/NZ))
 for i in range(NZ):
     for j in range(NT):a=i*(NT+1)+j;f.append((a,a+1,a+NT+2,a+NT+1))
-mesh('Sculpted head · continuous facial surface',v,f,SKIN,uv,1)
+head=mesh('Sculpted head · continuous facial surface',v,f,SKIN,uv,1)
+# Original, analytical skin tint in vertex colors; never sampled from the photograph.
+face_mat=SKIN.copy();face_mat.name='Face skin with subtle authored cheek color'
+col=head.data.color_attributes.new(name='FaceTint',type='FLOAT_COLOR',domain='POINT')
+inv=ROT.to_3x3().inverted()
+for vert,c in zip(head.data.vertices,col.data):
+    q=inv@(vert.co-HEAD);x,y,z=q;front=max(0,min(1,-y/.055))
+    blush=exp(-((abs(x)-.047)/.024)**2-((z+.031)/.028)**2)*front
+    nose=exp(-(x/.016)**2-((z+.016)/.026)**2)*front
+    c.color=(.63+.018*blush,.378-.025*blush-.009*nose,.269-.014*blush,1)
+nt=face_mat.node_tree;vc=nt.nodes.new('ShaderNodeVertexColor');vc.layer_name='FaceTint';nt.links.new(vc.outputs['Color'],nt.nodes.get('Principled BSDF').inputs['Base Color'])
+head.data.materials[0]=face_mat
+# Fine skin microstructure is procedural in Blender; vertex tones are portable to glTF.
+for mat in [SKIN,face_mat]:
+    nt=mat.node_tree;noise=nt.nodes.new('ShaderNodeTexNoise');noise.inputs['Scale'].default_value=1900;noise.inputs['Detail'].default_value=2
+    bump=nt.nodes.new('ShaderNodeBump');bump.inputs['Strength'].default_value=.12;bump.inputs['Distance'].default_value=.00014
+    nt.links.new(noise.outputs['Fac'],bump.inputs['Height']);nt.links.new(bump.outputs['Normal'],nt.nodes.get('Principled BSDF').inputs['Normal'])
+
 # Neck flows into the shirt opening.
-tube('Neck',[(.019,.016,1.306),(.025,.009,1.350),(.036,.002,1.409),H((0,.008,-.083))],[.040,.034,.032,.034],SKIN,aspect=.94,n=48,steps=8)
+tube('Neck',[(.019,.016,1.270),(.019,.016,1.306),(.025,.009,1.350),(.036,.002,1.409),H((0,.008,-.083))],[.055,.040,.034,.032,.034],SKIN,aspect=.94,n=48,steps=8)
 for side in [-1,1]:
     ear=ell('Ear pinna '+str(side),H((side*.079,.002,-.012)),(.017,.014,.029),SKIN)
     ear.rotation_euler[1]=side*.13
@@ -221,8 +251,8 @@ for side in [-1,1]:
     for k in range(1,R+1):
         r=k/R
         for j in range(N):
-            a=2*pi*j/N; dx=.0232*cos(a)*r
-            dz=(.0082 if sin(a)>0 else .0055)*sin(a)*r+side*dx*.07
+            a=2*pi*j/N; dx=.0180*cos(a)*r
+            dz=(.0073 if sin(a)>0 else .0048)*sin(a)*r+side*dx*.07
             x=cx+dx; z=cz+dz; y=face_y(x,z)-.001-.0018*(1-r*r)
             verts.append(H((x,y,z)));uvs.append((.5+cos(a)*r*.5,.5+sin(a)*r*.5))
     fs=[]
@@ -232,18 +262,22 @@ for side in [-1,1]:
         for j in range(N):fs.append((a+j,b+j,b+(j+1)%N,a+(j+1)%N))
     mesh('Almond sclera '+str(side),verts,fs,WHITE,uvs)
     # Iris is shallow dome rather than a protruding sphere.
-    r=.0067; cy=face_y(cx,cz)-.0040
+    r=.0059; cy=face_y(cx,cz)-.0040
     iv=[H((cx,cy-.00055,cz))]; iu=[(.5,.5)]; iff=[]
     for j in range(N):
-        t=2*pi*j/N;iv.append(H((cx+r*cos(t),cy+.0004,cz+r*sin(t))));iu.append((.5+.5*cos(t),.5+.5*sin(t)))
+        t=2*pi*j/N;xx=cx+r*cos(t);zz=cz+r*sin(t)
+        lower=cz-.0048*sqrt(max(0,1-((xx-cx)/.018)**2))+side*(xx-cx)*.07
+        upper=cz+.0073*sqrt(max(0,1-((xx-cx)/.018)**2))+side*(xx-cx)*.07
+        zz=max(lower+.0006,min(upper-.0005,zz))
+        iv.append(H((xx,face_y(xx,zz)-.0040,zz)));iu.append((.5+.5*cos(t),.5+.5*sin(t)))
     for j in range(N):iff.append((0,j+1,(j+1)%N+1))
     mesh('Brown iris '+str(side),iv,iff,IRIS,iu)
     ell('Eye catchlight '+str(side),H((cx-.0018,cy-.0010,cz+.0026)),(.00135,.00035,.00135),WHITE,20,12)
     for upper in [True,False]:
         pts=[]
         for j in range(21):
-            u=-1+2*j/20;x=cx+.0232*u
-            z=cz+(.0082 if upper else -.0055)*sqrt(max(0,1-u*u))+side*(x-cx)*.07
+            u=-1+2*j/20;x=cx+.0180*u
+            z=cz+(.0073 if upper else -.0048)*sqrt(max(0,1-u*u))+side*(x-cx)*.07
             pts.append(H((x,face_y(x,z)-.0022,z)))
         curve(('Upper' if upper else 'Lower')+' eyelid '+str(side),pts,.00115 if upper else .00085,LID)
         if upper:curve('Upper lash line '+str(side),[p+ROT.to_3x3()@Vector((0,-.0010,0)) for p in pts],.00052,BROW)
@@ -280,16 +314,18 @@ for upper in [True,False]:
 for i in range(10):
     x=(i-4.5)*.00545; u=x/.030; z=-.0485+.002*u*u
     y=face_y(x,z)-.0036
-    tooth=cube('Upper tooth %02d'%i,H((x,y,z)),(.00515,.0037,.0068*(1-.18*abs(u))),TEETH,.0011)
+    tooth=cube('Upper tooth %02d'%i,H((x,y,z)),(.00515,.0037,.0088*(1-.20*abs(u))),TEETH,.0007)
     tooth.rotation_euler=ROT.to_euler();tooth.rotation_euler[2]+=-x*.8
 for side in [-1,1]:
-    curve('Smile corner fold '+str(side),[H((side*.031,face_y(side*.031,-.042)-.0004,-.042)),H((side*.034,face_y(side*.034,-.048)-.0005,-.048))],.0004,LID)
+    pass # subtle smile corners are formed by the lip contour, without painted crease lines
 # Deliberately subtle facial asymmetry and a small beauty mark.
 ell('Cheek beauty mark',H((-.051,face_y(-.051,-.029)-.0005,-.029)),(.00055,.00024,.00055),LID,16,8)
 # ---------- Hair: hand-directed cap, layered swept fringe, and twin low tails ----------
-def cap_end(t): return 1.20+.91*((1-cos(t))*.5)**.55
+def cap_end(t): return float(np.interp(math.acos(cos(t)),[0,.65,1.05,1.35,1.57,2.2,pi],[1.12,1.14,1.22,1.55,1.80,2.12,2.18]))
 def cap_point(t,a,off=0):
-    return Vector(((.086+off)*sin(a)*sin(t),-(.077+off)*sin(a)*cos(t),(.132+off)*cos(a)))
+    q=sin(a);rx=(.090+off)*q*(1+.07*q*q);ry=(.083+off)*q*(1+.04*q*q)
+    return Vector((rx*sin(t),-ry*cos(t),(.138+off)*cos(a)))
+
 v=[];uv=[];f=[]
 for i in range(37):
     for j in range(145):
@@ -303,15 +339,16 @@ for i in range(135):
     for j in range(15):
         a=.07+(cap_end(t)-.09)*j/14;tt=t+.13*sin(a)*cos(t)
         p=cap_point(tt,a,.0008+random.random()*.0003);p.x+=.003*cos(a)**2;pts.append(H(p))
-    curve('Crown combed fiber %03d'%i,pts,.00018 if i%3 else .00026,HAIR2 if i%5 else HAIR3)
+    curve('Crown combed fiber %03d'%i,pts,.00012 if i%3 else .00017,HAIR2 if i%5 else HAIR3)
 for i in range(17):
     u=i/16; xe=-.069+.103*u
     # Fringe sweeps from a high part on the right into a low leftward arc.
     points=[(.040+.014*u,-.029,.117),(.031+.015*u,-.062,.096),
             (xe+.023,-.080,.068), (xe+.008,-.080,.040+.021*u*u),
             (xe-.005,-.073,.028+.026*u*u)]
+    points=[(x,(face_y(x,z)-.009 if j else y),z) for j,(x,y,z) in enumerate(points)]
     pp=[H(p) for p in points]
-    ribbon('Swept fringe lock %02d'%i,pp,[.006,.012,.013,.010,.0003],HAIR if i%4 else HAIR2,.0018,10,ROT.to_3x3()@Vector((0,-1,0)))
+    ribbon('Swept fringe lock %02d'%i,pp,[.001,.011,.012,.009,.0002],HAIR if i%4 else HAIR2,.0018,10,ROT.to_3x3()@Vector((0,-1,0)))
     for k in range(4):
         dx=(k-1.5)*.0018;pts=[H((x+dx,y-.0025,z)) for x,y,z in points]
         curve('Fine fringe fiber',pts,.00014,HAIR2 if k%3 else HAIR3)
@@ -324,13 +361,13 @@ for side in [-1,1]:
         for j,(x,y,z) in enumerate(tail):
             r=[.018,.031,.032,.029,.017,.003][j];aa=a+.3*sin(j*.9+k)
             pp.append(H((x+cos(aa)*r,y+sin(aa)*r*.8,z+.004*sin(k+j))))
-        ribbon('Ponytail layered lock',pp,[.005,.011,.012,.010,.008,.0003],HAIR if k%4 else HAIR2,.0025,8,ROT.to_3x3()@Vector((cos(a),sin(a),0)))
+        ribbon('Ponytail layered lock',pp,[.005,.011,.012,.010,.008,.0003],HAIR if k%4 else HAIR2,.0008,8,ROT.to_3x3()@Vector((cos(a),sin(a),0)))
     for k in range(68):
         a=2*pi*k/68;pts=[]
         for j,(x,y,z) in enumerate(tail):
             r=[.019,.032,.033,.030,.018,.003][j];aa=a+.28*sin(j*.9+k*.18)
             pts.append(H((x+cos(aa)*r,y+sin(aa)*r*.81,z+.004*sin(k+j))))
-        curve('Ponytail individual fiber',pts,.00018,HAIR2 if k%5 else HAIR3)
+        curve('Ponytail individual fiber',pts,.00011,HAIR2 if k%5 else HAIR3)
     curve('Ponytail tie', [H((side*.081+.019*cos(t),.030+.016*sin(t),-.050)) for t in np.linspace(0,2*pi,24)],.0022,WEBBING,True)
     for k in range(5):
         pts=[(side*(.073+k*.001),-.034,.056),(side*.082,-.045,-.004),(side*(.074+k*.001),-.053,-.051),(side*.072,-.047,-.105),(side*.081,-.042,-.130)]
@@ -342,7 +379,7 @@ for i in range(18):
     curve('Fine crown flyaway',pts,.00010,HAIR2)
 
 # ---------- Shirt with shaped shoulders, open collar, sleeve folds and rolled cuffs ----------
-sections=[(1.000,.118,.067),(1.013,.128,.075),(1.051,.132,.075),(1.112,.138,.074),(1.187,.144,.075),(1.256,.155,.073),(1.297,.168,.065),(1.316,.146,.057),(1.342,.048,.036)]
+sections=[(1.000,.118,.067),(1.013,.128,.075),(1.051,.132,.075),(1.112,.138,.074),(1.187,.144,.075),(1.256,.155,.073),(1.297,.158,.064),(1.316,.136,.054),(1.342,.048,.036)]
 v=[];f=[];uv=[];NX=128; NR=64
 for i in range(NR+1):
     t=i/NR*(len(sections)-1);k=min(int(t),len(sections)-2);a=t-k
@@ -359,7 +396,7 @@ for i in range(NR):
     for j in range(NX):a=i*(NX+1)+j;f.append((a,a+1,a+NX+2,a+NX+1))
 shirt=mesh('Shaped cotton shirt shell',v,f,SHIRT,uv,1)
 s=shirt.modifiers.new('Cotton shell thickness','SOLIDIFY');s.thickness=.0014
-ell('Upper chest inside open collar',(.025,.003,1.326),(.055,.035,.052),SKIN)
+# The exposed chest is now continuous with the neck, without an intersecting ellipsoid.
 # Front placket and white buttons.
 placket=[]
 for z in np.linspace(1.008,1.285,9):placket.append(((z-1)*.052,-.071+(.010 if z>1.26 else 0),z))
@@ -377,46 +414,67 @@ def patch(name,rows,mat):
         for j in range(n-1):a=i*n+j;f.append((a,a+1,a+n+1,a+n))
     o=mesh(name,v,f,mat,uv,1);s=o.modifiers.new('Folded fabric thickness','SOLIDIFY');s.thickness=.0016
     return o
+# Curved standing collar with an open front.
+cv=[];cu=[];cf=[]
+for i in range(2):
+    for j in range(65):
+        a=.55+(2*pi-1.10)*j/64
+        cv.append((.023+.040*sin(a),.005-.034*cos(a),1.334-.020*cos(a)-.017*(1-i)))
+        cu.append((j/64,i))
+for j in range(64):cf.append((j,j+1,j+66,j+65))
+co=mesh('Open standing shirt collar',cv,cf,SHIRT,cu,1)
+md=co.modifiers.new('Collar band thickness','SOLIDIFY');md.thickness=.0015
 for side in [-1,1]:
+    top=[(.023+side*.020,-.032,1.310),(.023+side*.038,-.005,1.348),(.023+side*.040,.023,1.343)]
+    hem=[(.023+side*.048,-.080,1.254),(.023+side*.070,-.056,1.295),(.023+side*.055,.035,1.329)]
     rows=[]
-    for i in range(7):
-        t=i/6; row=[]
-        # Neck edge to pointed collar tip, with an outward fold.
-        for j in range(9):
-            u=j/8;x=.023+side*(.018+.036*u+.014*sin(pi*t)*u)
-            z=(1.320+.034*u)*(1-t)+(1.259+.049*u)*t
-            y=(-.027+.021*u)*(1-t)+(-.088+.032*u)*t-.008*sin(pi*t)
-            row.append((x,y,z))
+    for i in range(9):
+        t=i/8;row=[]
+        for j in range(13):
+            u=j/12*2;k=min(int(u),1);a=u-k
+            v0=Vector(top[k]).lerp(Vector(top[k+1]),a);v1=Vector(hem[k]).lerp(Vector(hem[k+1]),a)
+            q=v0.lerp(v1,t);q.y-=.005*sin(pi*t);row.append(q)
         rows.append(row)
     patch('Folded shirt collar '+str(side),rows,SHIRT)
-    curve('Collar edge stitching',[(r[-1][0],r[-1][1]-.001,r[-1][2]) for r in rows],.00034,SEAM)
+    curve('Collar fine topstitch',[q+Vector((0,-.0008,0)) for q in rows[-1]],.00030,SEAM)
 # Small blue embroidered shirt emblem, authored as thread curves.
 EMB=material('Pale blue embroidery',(.33,.53,.71),.8)
 curve('Embroidered chest motif',[(.102,-.072,1.194),(.107,-.074,1.204),(.104,-.074,1.217),(.109,-.073,1.209),(.111,-.073,1.199)],.00065,EMB)
 for side in [-1,1]:
     sx=side
-    points=[(sx*.157+.015,.010,1.298),(sx*.178+.014,.005,1.250),(sx*.183+.012,.012,1.183),(sx*.177+.009,.033,1.115),(sx*.160+.007,.048,1.062)]
-    tube('Cotton sleeve '+str(side),points,[.048,.047,.044,.036,.0305],SHIRT,aspect=.90,n=64,steps=10,ripple=.028)
+    points=[(sx*.127+.015,.010,1.287),(sx*.135+.014,.005,1.250),(sx*.146+.012,.012,1.183),(sx*.150+.009,.033,1.115),(sx*.148+.007,.048,1.062)]
+    tube('Cotton sleeve '+str(side),points,[.041,.041,.040,.033,.0285],SHIRT,aspect=.90,n=64,steps=10,ripple=.028)
     # Five slender curved folds rather than artificial bands.
     for k in range(5):
         z=1.120+k*.023;x=sx*(.170+k*.002)+.01;y=-.026+k*.001
-        curve('Sleeve compression fold',[(x-sx*.024,y,z+.009),(x,y-.008,z),(x+sx*.024,y+.006,z+.007)],.00065,SEAM)
-    cuff=[(sx*.165+.007,.044,1.082),(sx*.158+.007,.048,1.055)]
+        # Folds are displaced in the sleeve surface itself, not floating curves.
+        pass
+    cuff=[(sx*.151+.007,.044,1.082),(sx*.147+.007,.048,1.055)]
     tube('Turned back cuff '+str(side),cuff,[.0340,.0340],SHIRT,aspect=.92,n=64,steps=6,ripple=.012)
-    curve('Rolled cuff seam '+str(side),[(sx*.160+.007+.0335*cos(a),.048+.030*sin(a),1.056-.003*cos(a)) for a in np.linspace(0,2*pi,40)],.00065,SEAM,True)
-    wrist=Vector((sx*.103+.007,.114,.954)); fore=[(sx*.157+.007,.048,1.061),(sx*.140+.007,.079,1.016),wrist]
-    tube('Forearm behind body '+str(side),fore,[.028,.025,.019],SKIN,aspect=.93,n=40,steps=10)
-    palm=Vector((sx*.069+.007,.138,.921));knuckle=Vector((sx*.044+.007,.151,.907))
-    tube('Palm and wrist '+str(side),[wrist,palm,knuckle],[.018,.021,.017],SKIN,aspect=.48,n=32,steps=8)
-    # Four jointed, tapered fingers and a separate thumb. All exist behind the skirt.
-    for k in range(4):
-        start=knuckle+Vector((0,(k-1.5)*.009,(k-1.5)*.003))
-        mid=start+Vector((-sx*.020,.005,-.010-(.003 if k in [1,2] else 0)))
-        end=mid+Vector((-sx*.011,-.002,-.003))
-        tube('Finger %s %s'%(side,k),[start,mid,end],[.0041,.0037,.0025],SKIN,aspect=.84,n=16,steps=5)
-        nail=ell('Fingernail',end+Vector((0,-.002,-.0003)),(.0032,.0010,.0045),LID,16,10)
-    thumbroot=palm+Vector((sx*.008,-.008,.011))
-    tube('Opposable thumb '+str(side),[thumbroot,thumbroot+Vector((-sx*.015,-.008,-.004)),thumbroot+Vector((-sx*.027,-.006,-.014))],[.0067,.0055,.0035],SKIN,n=20,steps=6)
+    curve('Rolled cuff seam '+str(side),[(sx*.148+.007+.0315*cos(a),.048+.030*sin(a),1.056-.003*cos(a)) for a in np.linspace(0,2*pi,40)],.00065,SEAM,True)
+    wrist=Vector((sx*.090+.007,.118,.958 if side<0 else .952))
+    knuckle=Vector((sx*.036+.007,.153 if side<0 else .166,.920 if side<0 else .902))
+    direction=(knuckle-wrist).normalized();normal=Vector((0,1,0));normal=(normal-direction*normal.dot(direction)).normalized();wide=normal.cross(direction).normalized()
+    handparts=[]
+    fore=[(sx*.147+.007,.048,1.061),(sx*.129+.007,.080,1.017),wrist]
+    handparts.append(tube('Forearm to wrist '+str(side),fore,[.028,.025,.0185],SKIN,aspect=.93,n=40,steps=10))
+    palm=ell('Anatomical palm '+str(side),(wrist+knuckle)/2,(.023,.011,(knuckle-wrist).length*.59),SKIN,40,24)
+    basis=Matrix((wide,normal,direction)).transposed();palm.rotation_euler=basis.to_euler();handparts.append(palm)
+    for k,length in enumerate([.036,.044,.042,.032]):
+        start=knuckle+wide*((k-1.5)*.009)-direction*.008
+        p1=start+direction*length*.40+normal*.003
+        p2=start+direction*length*.75+normal*.001
+        tip=start+direction*length*.91-normal*.004
+        handparts.append(tube('Articulated finger %s %s'%(side,k),[start,p1,p2,tip],[.0046,.0040,.0034,.0027],SKIN,aspect=.87,n=20,steps=5))
+        nail=ell('Natural fingernail',tip+normal*.0023-direction*.002,(.0024,.0005,.0042),LID,16,12);nail.rotation_euler=basis.to_euler()
+    root=(wrist+knuckle)/2-wide*.018-direction*.008
+    handparts.append(tube('Opposable hand thumb '+str(side),[root,root-wide*.012+direction*.010,root-wide*.009+direction*.025+normal*.003],[.007,.0054,.0037],SKIN,n=24,steps=6))
+    bpy.ops.object.select_all(action='DESELECT')
+    for ob in handparts:ob.select_set(True)
+    bpy.context.view_layer.objects.active=handparts[0];bpy.ops.object.join();hand=bpy.context.object;hand.name='Continuous forearm and posed hand '+str(side)
+    rm=hand.modifiers.new('Sculpted wrist and finger junctions','REMESH');rm.mode='VOXEL';rm.voxel_size=.00085;rm.use_smooth_shade=True
+    bpy.ops.object.modifier_apply(modifier=rm.name)
+    sm=hand.modifiers.new('Hand surface relaxation','SMOOTH');sm.factor=.42;sm.iterations=3;bpy.ops.object.modifier_apply(modifier=sm.name)
 
 # ---------- Pleated tartan skirt, waistband, lining and silk tie ----------
 NPLEATS=28; NS=NPLEATS*8; NH=28
@@ -485,15 +543,25 @@ for side in [-1,1]:
     ankle=Vector((-.070 if side<0 else .029,.038 if side<0 else -.046,.109 if side<0 else .102))
     knee=solve_knee(hip,ankle,pole=(.5,-.85,0) if side<0 else (.2,-.9,0))
     JOINTS[str(side)]={'hip':list(hip),'knee':list(knee),'ankle':list(ankle),'thigh':(hip-knee).length,'shin':(knee-ankle).length}
-    pts=[hip,hip.lerp(knee,.35),hip.lerp(knee,.75),knee,knee.lerp(ankle,.26),knee.lerp(ankle,.61),ankle]
-    tube('Continuous anatomical leg '+str(side),pts,[.065,.061,.049,.0395,.045,.034,.024],SKIN,aspect=.94,n=64,steps=9)
-    # Socks follow the very same knee/ankle centreline.
-    top=knee.lerp(ankle,.105)
-    sp=[top,knee.lerp(ankle,.22),knee.lerp(ankle,.39),knee.lerp(ankle,.66),knee.lerp(ankle,.88),ankle+Vector((0,0,-.012))]
-    tube('Ribbed knee sock '+str(side),sp,[.0425,.045,.043,.034,.027,.026],SOCK,aspect=.95,n=96,steps=8,ripple=.004)
-    tube('Sock top welt '+str(side),[top+Vector((0,0,.0015)),top+Vector((0,0,-.009))],[.0427,.0431],SOCK,aspect=.95,n=96,steps=3)
+    pts=[hip,hip.lerp(knee,.35),hip.lerp(knee,.75),knee,knee.lerp(ankle,.26),knee.lerp(ankle,.61),ankle,ankle+Vector((0,-.004,-.027))]
+    leg=tube('Continuous anatomical leg '+str(side),pts,[.065,.061,.049,.0395,.045,.034,.024,.024],SKIN,aspect=.94,n=96,steps=12)
+    # The sock shares the exact anatomical surface, so skin cannot penetrate it.
+    # A material boundary follows a full circumferential ring, with a raised knitted welt.
+    leg.data.materials.append(SOCK)
+    ring_count=len(leg.data.vertices)//97
+    centers=interp(pts,12)
+    top_i=min(range(len(centers)),key=lambda i:abs(centers[i].z-.449))
+    for poly in leg.data.polygons:
+        if min(poly.vertices)>=top_i*97:poly.material_index=1
+    for i in range(top_i,ring_count):
+        c=centers[i]
+        for j in range(97):
+            vert=leg.data.vertices[i*97+j]; d=vert.co-c
+            vert.co=c+d*(1+.0013/max(d.length,.001))
+    rim=[leg.data.vertices[top_i*97+j].co.copy() for j in range(96)]
+    curve('Knitted sock top edge '+str(side),rim,.0013,SOCK,True)
     # Shoes are independently modeled lasts, with soles, heel blocks and sewn aprons.
-    angle=-.085 if side<0 else .060;C=Vector((ankle.x,ankle.y-.006,0));R=Matrix.Rotation(angle,3,'Z')
+    angle=-.085 if side<0 else .060;C=Vector((ankle.x,ankle.y-.038,0));R=Matrix.Rotation(angle,3,'Z')
     def F(p):return C+R@Vector(p)
     outline=[]
     for j in range(80):
@@ -529,13 +597,13 @@ for side in [-1,1]:
         curve('Welt stitch',[F((x*1.017,y,.0335)),F((x2*1.017,y2,.0335))],.00034,STITCH)
 
 # ---------- Full backpack, including the unseen back ----------
-cube('Rounded indigo backpack body',(.014,.128,1.185),(.246,.108,.310),PACK,.043)
+cube('Rounded indigo backpack body',(.014,.128,1.170),(.238,.102,.282),PACK,.043)
 cube('Backpack rear pocket',(.014,.192,1.116),(.192,.035,.143),PACK,.025)
 curve('Pocket piped edge',[(-.068,.211,1.061),(-.079,.211,1.099),(-.075,.211,1.167),(.014,.214,1.183),(.102,.211,1.167),(.107,.211,1.099),(.094,.211,1.061)],.0017,WEBBING)
 curve('Backpack main zip',[(-.103,.158,1.187),(-.102,.161,1.278),(-.068,.164,1.331),(.014,.166,1.340),(.097,.164,1.331),(.130,.161,1.278),(.131,.158,1.187)],.0023,WEBBING)
-curve('Top carry handle',[(-.029,.124,1.330),(-.027,.128,1.377),(.055,.128,1.377),(.057,.124,1.330)],.006,WEBBING)
+curve('Top carry handle',[(-.029,.124,1.314),(-.027,.128,1.342),(.055,.128,1.342),(.057,.124,1.314)],.006,WEBBING)
 for s in [-1,1]:
-    paths=[(.014+s*.104,.135,1.248),(.014+s*.141,.095,1.327),(.014+s*.150,.030,1.329),(.014+s*.143,-.018,1.292),(.014+s*.132,-.044,1.227),(.014+s*.128,-.043,1.157),(.014+s*.109,-.017,1.077),(.014+s*.096,.073,1.054)]
+    paths=[(.014+s*.104,.135,1.248),(.014+s*.141,.095,1.314),(.014+s*.150,.030,1.318),(.014+s*.143,-.018,1.292),(.014+s*.132,-.044,1.227),(.014+s*.128,-.043,1.157),(.014+s*.109,-.017,1.077),(.014+s*.096,.073,1.054)]
     ribbon('Continuous backpack shoulder strap '+str(s),paths,[.025,.030,.030,.030,.025,.021,.016,.017],PACK,.003,10)
     for off in [-.010,.010]:
         curve('Backpack strap edge stitch',[Vector(p)+Vector((off,-.002,0)) for p in paths[2:6]],.00036,WEBBING)
@@ -560,15 +628,27 @@ try:scene.view_settings.view_transform='AgX';scene.view_settings.look='AgX - Med
 except:scene.view_settings.view_transform='Standard'
 scene.view_settings.exposure=0;scene.view_settings.gamma=1
 FLOOR=material('Studio chalk',(.37,.405,.40),.86)
-bpy.ops.mesh.primitive_plane_add(size=200,location=(0,0,-.001));floor=bpy.context.object;floor.name='Studio seamless floor';floor.data.materials.append(FLOOR)
+# Original cyclorama geometry avoids a floor/world horizon in perspective renders.
+section=[(-20,-.001),(2,-.001)]+[(2+1.5*cos(a),1.499+1.5*sin(a)) for a in np.linspace(-pi/2,0,48)]+[(3.5,8)]
+vv=[(x,y,z) for y,z in section for x in [-20,20]];ff=[(i*2,i*2+1,i*2+3,i*2+2) for i in range(len(section)-1)]
+me=bpy.data.meshes.new('Cyclorama');me.from_pydata(vv,[],ff);me.update();floor=bpy.data.objects.new('Studio seamless cyclorama',me);scene.collection.objects.link(floor);me.materials.append(FLOOR)
+for poly in me.polygons:poly.use_smooth=True
+
 def area(name,pos,power,size,color):
     bpy.ops.object.light_add(type='AREA',location=pos);o=bpy.context.object;o.name=name;o.data.energy=power;o.data.shape='DISK';o.data.size=size;o.data.color=color
     o.rotation_euler=(Vector((0,0,.93))-o.location).to_track_quat('-Z','Y').to_euler()
 area('Large warm key',(-2.5,-3.2,4.3),380,3.0,(1.0,.88,.79))
-area('Cool soft fill',(2.8,-2.0,2.6),210,2.4,(.80,.88,1.0))
-area('Hair and shoulder rim',(.6,1.8,3.3),420,2.0,(1.0,.95,.86))
-bpy.ops.object.camera_add(location=(.06,-4.5,1.48));cam=bpy.context.object;cam.name='Reference portrait camera';scene.camera=cam
-cam.rotation_euler=(Vector((.01,0,.83))-cam.location).to_track_quat('-Z','Y').to_euler();cam.data.type='ORTHO';cam.data.ortho_scale=1.81;cam.data.lens=70
+area('Cool soft fill',(2.8,-2.0,2.6),125,2.4,(.80,.88,1.0))
+area('Hair and shoulder rim',(.6,1.8,3.3),285,2.0,(1.0,.95,.86))
+bpy.ops.object.camera_add(location=(.06,-3.8,1.35));cam=bpy.context.object;cam.name='Reference portrait camera';scene.camera=cam
+cam.rotation_euler=(Vector((.015,0,.855))-cam.location).to_track_quat('-Z','Y').to_euler();cam.data.type='PERSP';cam.data.lens=70
+# Fit the authored 3D bounds to a portrait camera, never by analyzing reference pixels.
+from bpy_extras.object_utils import world_to_camera_view
+bpy.context.view_layer.update()
+coords=[world_to_camera_view(scene,cam,o.matrix_world@Vector(c)) for o in CHAR.objects for c in o.bound_box]
+span=max(p.y for p in coords)-min(p.y for p in coords)
+cam.data.lens*=.92/span
+
 scene.render.filepath=str(PRE/'gpt6_astra_pro_blender_front.png')
 # These custom properties document equal underlying limb lengths independently of the image appearance.
 scene['Author']='GPT-6 Astra Pro / mcp_colabdev / Blender headless'
@@ -591,7 +671,11 @@ for name,objects in buckets.items():
     for o in objects:o.select_set(True)
     bpy.context.view_layer.objects.active=objects[0]
     if len(objects)>1:bpy.ops.object.join()
-    o=bpy.context.object;o.name='R01 / '+name;exports.append(o)
+    o=bpy.context.object;o.name='R01 / '+name
+    if len(o.data.polygons)>6000:
+        dec=o.modifiers.new('Web geometry budget','DECIMATE');dec.ratio=.24 if 'hair' in name.lower() or 'fiber' in name.lower() else .50
+        bpy.context.view_layer.objects.active=o;bpy.ops.object.modifier_apply(modifier=dec.name)
+    exports.append(o)
 bpy.ops.object.select_all(action='DESELECT')
 for o in exports:o.select_set(True)
 verts=sum(len(o.data.vertices) for o in exports);tris=sum(sum(len(p.vertices)-2 for p in o.data.polygons) for o in exports)

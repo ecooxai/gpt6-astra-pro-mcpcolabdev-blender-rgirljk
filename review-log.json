@@ -1,0 +1,40 @@
+{
+  "iteration": 3,
+  "quality": 65.0,
+  "goal": 95,
+  "requestedIterations": 20000,
+  "stage": "Corrected iris placement, more natural eye proportions, a new collar, and a perspective camera. Remaining: angular facial contour, hard hair highlights, neck transition, ankle gaps and rear-hand anatomy.",
+  "history": [
+    {
+      "iteration": 1,
+      "score": 47.0,
+      "title": "First complete geometry pass",
+      "notes": "Recognizable uniform and pose. Correct scalp penetration, sock intersections, shoulder continuity and facial structure before assessing likeness further.",
+      "image": "reviews/iteration-001.png",
+      "reviewedAt": "2026-10-03T15:15:29Z"
+    },
+    {
+      "iteration": 2,
+      "score": 58.0,
+      "title": "Continuous clothing and scalp",
+      "notes": "Repaired scalp coverage and all sock/skin intersections. Next: eye surface placement, collar shaping, stray sleeve seams, and camera perspective.",
+      "image": "reviews/iteration-002.png",
+      "reviewedAt": "2026-10-03T15:19:13Z"
+    },
+    {
+      "iteration": 3,
+      "score": 65.0,
+      "title": "Facial alignment and portrait camera",
+      "notes": "Corrected iris placement, more natural eye proportions, a new collar, and a perspective camera. Remaining: angular facial contour, hard hair highlights, neck transition, ankle gaps and rear-hand anatomy.",
+      "image": "reviews/iteration-003.png",
+      "reviewedAt": "2026-10-03T15:29:12Z"
+    }
+  ],
+  "version": 3,
+  "modelVersion": 3,
+  "views": [
+    "front",
+    "side",
+    "face"
+  ]
+}
