@@ -5,6 +5,7 @@ ROOT=Path(__file__).resolve().parents[1];PRE=ROOT/'build/preview'
 s=bpy.context.scene;s.cycles.use_denoising=True;s.cycles.samples=int(os.environ.get('SAMPLES','64'));s.render.threads_mode='FIXED';s.render.threads=8
 views=os.environ.get('VIEWS','front').split(',')
 for view in views:
+    s.camera.data.type='ORTHO'
     s.render.resolution_x=800;s.render.resolution_y=1200;s.camera.data.ortho_scale=1.81
     target=Vector((.01,0,.83))
     if view=='front':loc=(.06,-4.5,1.48)
